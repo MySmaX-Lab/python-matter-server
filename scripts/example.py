@@ -20,7 +20,8 @@ DEFAULT_VENDOR_ID = 0xFFF1
 DEFAULT_FABRIC_ID = 1
 DEFAULT_PORT = 5580
 DEFAULT_URL = f"http://127.0.0.1:{DEFAULT_PORT}/ws"
-DEFAULT_STORAGE_PATH = os.path.join(Path.home(), ".matter_server")
+DEFAULT_STORAGE_PATH = os.path.join(Path.home(), "/data")
+DEFAULT_PAA_ROOT_CERT_PATH = os.path.join(Path.home(), "/data/credentials")
 
 
 # Get parsed passed in arguments.
@@ -30,6 +31,11 @@ parser.add_argument(
     type=str,
     default=DEFAULT_STORAGE_PATH,
     help=f"Storage path to keep persistent data, defaults to {DEFAULT_STORAGE_PATH}",
+)
+parser.add_argument(
+    "--paa-root-cert-dir",
+    type=str,
+    default=DEFAULT_PAA_ROOT_CERT_PATH,
 )
 parser.add_argument(
     "--port",
@@ -69,6 +75,8 @@ if __name__ == "__main__":
         DEFAULT_FABRIC_ID,
         int(args.port),
         args.primary_interface,
+        bluetooth_adapter_id=0,
+        paa_root_cert_dir=args.paa_root_cert_dir,
     )
 
     async def run_matter():

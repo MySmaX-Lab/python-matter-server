@@ -359,6 +359,78 @@ class MatterDeviceController:
         # return full node object once we're complete
         return self.get_node(node_id)
 
+    @api_command(APICommand.COMMISSION_WIFI)
+    async def commission_wifi(
+        self,
+        code: int,
+        discriminator: int,
+        ssid: str,
+        credentials: str,
+        isShortDiscriminator: bool = False,
+        network_only: bool = False,
+    ) -> MatterNodeData:
+        if not network_only and not self.server.bluetooth_enabled:
+            raise NodeCommissionFailed("Bluetooth commissioning is not available.")
+
+        node_id = self._get_next_node_id()
+        LOGGER.info(
+            "Starting Matter commissioning with code using Node ID %s.",
+            node_id,
+        )
+        try:
+            commissioned_node_id: int = (
+                await self._chip_device_controller.commission_wifi(
+                    discriminator,
+                    code,
+                    node_id,
+                    ssid,
+                    credentials,
+                    isShortDiscriminator,
+                )
+            )
+            # We use SDK default behavior which always uses the commissioning Node ID in the
+            # generated NOC. So this should be the same really.
+            LOGGER.info("Commissioned Node ID: %s vs %s", commissioned_node_id, node_id)
+            if commissioned_node_id != node_id:
+                raise RuntimeError("Returned Node ID must match requested Node ID")
+        except ChipStackError as err:
+            raise NodeCommissionFailed(
+                f"Commission with code failed for node {node_id}."
+            ) from err
+
+        LOGGER.info("Matter commissioning of Node ID %s successful.", node_id)
+
+        # perform full (first) interview of the device
+        # we retry the interview max 3 times as it may fail in noisy
+        # RF environments (in case of thread), mdns trouble or just flaky devices.
+        # retrying both the mdns resolve and (first) interview, increases the chances
+        # of a successful device commission.
+        retries = 3
+        while retries:
+            try:
+                await self._interview_node(node_id)
+            except (NodeNotResolving, NodeInterviewFailed) as err:
+                if retries <= 0:
+                    try:
+                        await self._chip_device_controller.unpair_device(node_id)
+                    except ChipStackError as err_unpair:
+                        LOGGER.warning(
+                            "Removing current fabric from device failed: %s", err_unpair
+                        )
+                    raise err
+                retries -= 1
+                LOGGER.warning("Unable to interview Node %s: %s", node_id, err)
+                await asyncio.sleep(5)
+            else:
+                break
+
+        # make sure we start a subscription for this newly added node
+        if task := self._setup_node_create_task(node_id):
+            await task
+        LOGGER.info("Commissioning of Node ID %s completed.", node_id)
+        # return full node object once we're complete
+        return self.get_node(node_id)
+
     @api_command(APICommand.COMMISSION_ON_NETWORK)
     async def commission_on_network(
         self,

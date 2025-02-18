@@ -156,17 +156,30 @@ class MatterClient:
         )
         return dataclass_from_dict(MatterNodeData, data)
 
+    async def commission_wifi(
+        self,
+        code: int,
+        discriminator: int,
+        ssid: str,
+        credentials: str,
+        isShortDiscriminator: bool = False,
+        network_only: bool = False,
+    ) -> MatterNodeData:
+        data = await self.send_command(
+            APICommand.COMMISSION_WIFI,
+            require_schema=6 if network_only else None,
+            code=code,
+            discriminator=discriminator,
+            ssid=ssid,
+            credentials=credentials,
+            isShortDiscriminator=isShortDiscriminator,
+            network_only=network_only,
+        )
+        return dataclass_from_dict(MatterNodeData, data)
+
     async def commission_on_network(
         self, setup_pin_code: int, ip_addr: str | None = None
     ) -> MatterNodeData:
-        """
-        Do the routine for OnNetworkCommissioning.
-
-        NOTE: For advanced usecases only, use `commission_with_code`
-        for regular commissioning.
-
-        Returns basic MatterNodeData once complete.
-        """
         data = await self.send_command(
             APICommand.COMMISSION_ON_NETWORK,
             require_schema=6 if ip_addr is not None else None,
