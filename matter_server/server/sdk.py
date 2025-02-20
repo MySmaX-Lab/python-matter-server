@@ -152,8 +152,10 @@ class ChipDeviceControllerWrapper:
         retry = 100
         while retry:
             try:
-                await self.set_wifi_credentials(ssid, credentials)
-                await self.set_thread_operational_dataset(dataset)
+                if ssid and credentials:
+                    await self.set_wifi_credentials(ssid, credentials)
+                if dataset:
+                    await self.set_thread_operational_dataset(dataset)
                 return await self._chip_controller.ConnectBLE(
                     discriminator=discriminator,
                     setupPinCode=setupPinCode,
