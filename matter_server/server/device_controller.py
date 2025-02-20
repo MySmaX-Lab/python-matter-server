@@ -359,16 +359,30 @@ class MatterDeviceController:
         # return full node object once we're complete
         return self.get_node(node_id)
 
-    @api_command(APICommand.COMMISSION_WIFI)
-    async def commission_wifi(
+    @api_command(APICommand.COMMISSION_ANYTHING)
+    async def commission_anything(
         self,
         code: int,
         discriminator: int,
         ssid: str,
         credentials: str,
+        dataset: str,
         isShortDiscriminator: bool = False,
         network_only: bool = False,
     ) -> MatterNodeData:
+        """
+        Commission a any matter device using a QR Code or Manual Pairing Code.
+
+        :param code: The QR Code or Manual Pairing Code for device commissioning.
+        :param discriminator: The discriminator to use for commissioning.
+        :param ssid: The SSID of the network to commission the device to.
+        :param credentials: The credentials of the network to commission the device to.
+        :param dataset: The Thread Operational Dataset to use for commissioning.
+        :param isShortDiscriminator: If True, the discriminator is a short discriminator.
+        :param network_only: If True, restricts device discovery to network only.
+
+        :return: The NodeInfo of the commissioned device.
+        """
         if not network_only and not self.server.bluetooth_enabled:
             raise NodeCommissionFailed("Bluetooth commissioning is not available.")
 
@@ -379,12 +393,13 @@ class MatterDeviceController:
         )
         try:
             commissioned_node_id: int = (
-                await self._chip_device_controller.commission_wifi(
+                await self._chip_device_controller.commission_anything(
                     discriminator,
                     code,
                     node_id,
                     ssid,
                     credentials,
+                    dataset,
                     isShortDiscriminator,
                 )
             )

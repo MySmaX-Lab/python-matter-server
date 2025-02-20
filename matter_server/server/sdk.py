@@ -137,75 +137,33 @@ class ChipDeviceControllerWrapper:
             ),
         )
 
-    #### Version 1 ####
-    # async def commission_wifi(
-    #     self,
-    #     discriminator: int,
-    #     setupPinCode: int,
-    #     node_id: int,
-    #     ssid: str,
-    #     credentials: str,
-    #     isShortDiscriminator: bool = False,
-    # ) -> int:
-    #     """Commission a device using a QR Code or Manual Pairing Code."""
-    #     await self.set_wifi_credentials(ssid, credentials)
-    #     await self._chip_controller.EstablishPASESessionBLE(setupPinCode, discriminator, node_id)
-    #     # await self._chip_controller.EstablishPASESession(setupPinCode, node_id)
-    #     effective_node_id = await self._chip_controller.ConnectBLE(node_id, isShortDiscriminator)
-    #     effective_node_id = await self._chip_controller.Commission(node_id)
-    #     await self._chip_controller.CloseSession(node_id)
-
-    #     return effective_node_id
-
-    #### Version 2 ####
-    async def commission_wifi(
+    async def commission_anything(
         self,
         discriminator: int,
         setupPinCode: int,
         node_id: int,
         ssid: str,
         credentials: str,
+        dataset: str,
         isShortDiscriminator: bool = False,
     ) -> int:
-        """Commission a device using a QR Code or Manual Pairing Code."""
+        """Commission a any matter device using a QR Code or Manual Pairing Code."""
         exception = None
         retry = 100
         while retry:
             try:
                 await self.set_wifi_credentials(ssid, credentials)
-                effective_node_id = await self._chip_controller.ConnectBLE(
+                await self.set_thread_operational_dataset(dataset)
+                return await self._chip_controller.ConnectBLE(
                     discriminator=discriminator,
                     setupPinCode=setupPinCode,
                     nodeid=node_id,
                     isShortDiscriminator=isShortDiscriminator,
                 )
-                return effective_node_id
             except Exception as e:
                 retry -= 1
                 exception = e
         raise exception
-
-    #### Version 3 ####
-    # async def commission_wifi(
-    #     self,
-    #     discriminator: int,
-    #     setupPinCode: int,
-    #     node_id: int,
-    #     ssid: str,
-    #     credentials: str,
-    #     isShortDiscriminator: bool = False,
-    # ) -> int:
-    #     """Commission a device using a QR Code or Manual Pairing Code."""
-    #     effective_node_id = await self._chip_controller.CommissionWiFi(
-    #         discriminator=discriminator,
-    #         setupPinCode=setupPinCode,
-    #         nodeId=node_id,
-    #         ssid=ssid,
-    #         credentials=credentials,
-    #         isShortDiscriminator=isShortDiscriminator,
-    #     )
-
-    #     return effective_node_id
 
     async def commission_on_network(
         self,
