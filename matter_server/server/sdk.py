@@ -149,8 +149,9 @@ class ChipDeviceControllerWrapper:
     ) -> int:
         """Commission a any matter device using a QR Code or Manual Pairing Code."""
         exception = None
-        retry = 100
-        while retry:
+        start_time = time.time()
+        timeout_duration = 120  # seconds
+        while time.time() - start_time < timeout_duration:
             try:
                 if ssid and credentials:
                     await self.set_wifi_credentials(ssid, credentials)
@@ -163,8 +164,8 @@ class ChipDeviceControllerWrapper:
                     isShortDiscriminator=isShortDiscriminator,
                 )
             except Exception as e:
-                retry -= 1
                 exception = e
+            await asyncio.sleep(1)
         raise exception
 
     async def commission_on_network(
