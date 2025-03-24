@@ -147,7 +147,7 @@ class ChipDeviceControllerWrapper:
         credentials: str,
         dataset: str,
         isShortDiscriminator: bool = False,
-        timeout: int = 10,
+        timeout: int = 120,
     ) -> int:
         """Commission any matter device using a QR Code or Manual Pairing Code with timeout."""
 
