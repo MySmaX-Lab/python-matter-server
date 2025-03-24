@@ -20,6 +20,7 @@ from chip.exceptions import ChipStackError
 
 from ..common.errors import (
     NodeNotResolving,
+    NodeCommissionFailed,
 )
 
 if TYPE_CHECKING:
@@ -146,27 +147,37 @@ class ChipDeviceControllerWrapper:
         credentials: str,
         dataset: str,
         isShortDiscriminator: bool = False,
+        timeout: int = 10,
     ) -> int:
-        """Commission a any matter device using a QR Code or Manual Pairing Code."""
+        """Commission any matter device using a QR Code or Manual Pairing Code with timeout."""
+
         exception = None
-        start_time = time.time()
-        timeout_duration = 120  # seconds
-        while time.time() - start_time < timeout_duration:
-            try:
-                if ssid and credentials:
-                    await self.set_wifi_credentials(ssid, credentials)
-                if dataset:
-                    await self.set_thread_operational_dataset(dataset)
-                return await self._chip_controller.ConnectBLE(
-                    discriminator=discriminator,
-                    setupPinCode=setupPinCode,
-                    nodeid=node_id,
-                    isShortDiscriminator=isShortDiscriminator,
-                )
-            except Exception as e:
-                exception = e
-            await asyncio.sleep(1)
-        raise exception
+        async def _commission_logic() -> int:
+            nonlocal exception
+
+            while True:
+                try:
+                    if ssid and credentials:
+                        await self.set_wifi_credentials(ssid, credentials)
+                    if dataset:
+                        await self.set_thread_operational_dataset(dataset)
+                    return await self._chip_controller.ConnectBLE(
+                        discriminator=discriminator,
+                        setupPinCode=setupPinCode,
+                        nodeid=node_id,
+                        isShortDiscriminator=isShortDiscriminator,
+                    )
+                except Exception as err:
+                    exception = err
+                await asyncio.sleep(1)
+
+        try:
+            return await asyncio.wait_for(_commission_logic(), timeout)
+        except asyncio.TimeoutError as err:
+            if exception:
+                raise exception
+            else:
+                raise NodeCommissionFailed(f"Commissioning timed out after {timeout} seconds without specific exceptions") from err
 
     async def commission_on_network(
         self,
