@@ -822,7 +822,7 @@ class MatterClient:
                         continue
                     key = f"{evt_key}/{node_key}/{attribute_path_key}"
                     for callback in self._subscribers.get(key, []):
-                        callback(event, data)
+                        callback(event, {"node_id": node_id, "attribute_path_key": attribute_path_key, "data": data})
 
     async def __aenter__(self) -> "MatterClient":
         """Initialize and connect the Matter Websocket client."""
