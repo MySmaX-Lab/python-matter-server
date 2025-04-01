@@ -156,6 +156,42 @@ class MatterClient:
         )
         return dataclass_from_dict(MatterNodeData, data)
 
+    async def commission_anything(
+        self,
+        code: int,
+        discriminator: int,
+        ssid: str,
+        credentials: str,
+        dataset: str,
+        isShortDiscriminator: bool = False,
+        network_only: bool = False,
+    ) -> MatterNodeData:
+        """
+        Commission a any matter device using a QR Code or Manual Pairing Code.
+
+        :param code: The QR Code or Manual Pairing Code for device commissioning.
+        :param discriminator: The discriminator to use for commissioning.
+        :param ssid: The SSID of the network to commission the device to.
+        :param credentials: The credentials of the network to commission the device to.
+        :param dataset: The Thread Operational Dataset to use for commissioning.
+        :param isShortDiscriminator: If True, the discriminator is a short discriminator.
+        :param network_only: If True, restricts device discovery to network only.
+
+        :return: The NodeInfo of the commissioned device.
+        """
+        data = await self.send_command(
+            APICommand.COMMISSION_ANYTHING,
+            require_schema=6 if network_only else None,
+            code=code,
+            discriminator=discriminator,
+            ssid=ssid,
+            credentials=credentials,
+            dataset=dataset,
+            isShortDiscriminator=isShortDiscriminator,
+            network_only=network_only,
+        )
+        return dataclass_from_dict(MatterNodeData, data)
+
     async def commission_on_network(
         self, setup_pin_code: int, ip_addr: str | None = None
     ) -> MatterNodeData:

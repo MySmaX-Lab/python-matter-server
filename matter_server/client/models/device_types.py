@@ -736,7 +736,7 @@ class RoboticVacuumCleaner(DeviceType, device_type=0x0074):
         all_clusters.RvcRunMode,
         all_clusters.RvcCleanMode,
         all_clusters.RvcOperationalState,
-        all_clusters.ServiceArea,
+        # all_clusters.ServiceArea,
     }
 
 
@@ -801,7 +801,7 @@ class NetworkInfrastructureManager(DeviceType, device_type=0x0090):
 
     clusters = {
         all_clusters.Descriptor,
-        all_clusters.ThreadNetworkDirectory,
+        # all_clusters.ThreadNetworkDirectory,
         all_clusters.WiFiNetworkManagement,
         all_clusters.ThreadBorderRouterManagement,
     }
@@ -896,8 +896,8 @@ class WaterHeater(DeviceType, device_type=0x050F):
         all_clusters.Descriptor,
         all_clusters.Identify,
         all_clusters.Thermostat,
-        all_clusters.WaterHeaterManagement,
-        all_clusters.WaterHeaterMode,
+        # all_clusters.WaterHeaterManagement,
+        # all_clusters.WaterHeaterMode,
     }
 
 
