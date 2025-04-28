@@ -644,7 +644,9 @@ class MatterDeviceController:
                 pairing_hint=x.pairingHint,
                 mrp_retry_interval_idle=x.mrpRetryIntervalIdle,
                 mrp_retry_interval_active=x.mrpRetryIntervalActive,
-                supports_tcp=x.supportsTcp,
+                supports_tcp_client=x.supportsTcpClient,
+                supports_tcp_server=x.supportsTcpServer,
+                is_icd_operating_as_lit=x.isICDOperatingAsLIT,
                 addresses=x.addresses,
                 rotating_id=x.rotatingId,
             )

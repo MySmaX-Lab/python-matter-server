@@ -202,7 +202,9 @@ class CommissionableNodeData:
     pairing_hint: int | None = None
     mrp_retry_interval_idle: int | None = None
     mrp_retry_interval_active: int | None = None
-    supports_tcp: bool | None = None
+    supports_tcp_client: bool | None = None
+    supports_tcp_server: bool | None = None
+    is_icd_operating_as_lit: bool | None = None
     addresses: list[str] | None = None
     rotating_id: str | None = None
 
