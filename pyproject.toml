@@ -28,7 +28,7 @@ name = "python-matter-server"
 readme = "README.md"
 requires-python = ">=3.11"
 # The version is set by GH action on release!
-version = "7.0.1.2"
+version = "7.0.1.3"
 
 [project.optional-dependencies]
 server = [
