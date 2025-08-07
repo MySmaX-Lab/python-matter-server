@@ -135,6 +135,28 @@ export const device_types: Record<number, DeviceType> = {
       30
     ]
   },
+  "271": {
+    "id": 271,
+    "label": "Mounted On/Off Control",
+    "clusters": [
+      98,
+      3,
+      4,
+      6,
+      8
+    ]
+  },
+  "272": {
+    "id": 272,
+    "label": "Mounted Dimmable Load Control",
+    "clusters": [
+      98,
+      3,
+      4,
+      6,
+      8
+    ]
+  },
   "268": {
     "id": 268,
     "label": "Color Temperature Light",
@@ -12321,6 +12343,30 @@ export const clusters: Record<number, ClusterDescription> = {
         "cluster_id": 319486977,
         "label": "MotionSensitivity",
         "type": "int"
+      }
+    }
+  },
+  "305134641": {
+    "id": 305134641,
+    "label": "InovelliCluster",
+    "attributes": {
+      "305070177": {
+        "id": 305070177,
+        "cluster_id": 305134641,
+        "label": "LEDIndicatorIntensityOn",
+        "type": "uint"
+      },
+      "305070178": {
+        "id": 305070178,
+        "cluster_id": 305134641,
+        "label": "LEDIndicatorIntensityOff",
+        "type": "uint"
+      },
+      "305070342": {
+        "id": 305070342,
+        "cluster_id": 305134641,
+        "label": "ClearNotificationWithConfigDoubleTap",
+        "type": "bool"
       }
     }
   },
