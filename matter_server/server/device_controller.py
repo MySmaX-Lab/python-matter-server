@@ -420,7 +420,7 @@ class MatterDeviceController:
             LOGGER.info("Commissioned Node ID: %s vs %s", commissioned_node_id, node_id)
             if commissioned_node_id != node_id:
                 raise RuntimeError("Returned Node ID must match requested Node ID")
-        except ChipStackError as err:
+        except (ChipStackError, NodeCommissionFailed) as err:
             raise NodeCommissionFailed(
                 f"Commission with code failed for node {node_id}."
             ) from err

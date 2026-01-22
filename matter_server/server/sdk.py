@@ -152,28 +152,50 @@ class ChipDeviceControllerWrapper:
         """Commission any matter device using a QR Code or Manual Pairing Code with timeout."""
 
         exception = None
+        commission_task = None
+
         async def _commission_logic() -> int:
             nonlocal exception
 
+            # Keep trying until timeout
             while True:
                 try:
                     if ssid and credentials:
                         await self.set_wifi_credentials(ssid, credentials)
                     if dataset:
                         await self.set_thread_operational_dataset(dataset)
+                    # On successful connection, returns immediately
                     return await self._chip_controller.ConnectBLE(
                         discriminator=discriminator,
                         setupPinCode=setupPinCode,
                         nodeid=node_id,
                         isShortDiscriminator=isShortDiscriminator,
                     )
+                except asyncio.CancelledError:
+                    # Task was cancelled, stop retrying
+                    raise
                 except Exception as err:
                     exception = err
-                await asyncio.sleep(1)
+                    # Wait before retry
+                    try:
+                        await asyncio.sleep(1)
+                    except asyncio.CancelledError:
+                        # If cancelled during sleep, propagate immediately
+                        raise
 
         try:
-            return await asyncio.wait_for(_commission_logic(), timeout)
+            commission_task = asyncio.create_task(_commission_logic())
+            # Returns immediately on success
+            return await asyncio.wait_for(commission_task, timeout)
         except asyncio.TimeoutError as err:
+            # Timeout reached, cancel any ongoing BLE connection attempts
+            if commission_task and not commission_task.done():
+                commission_task.cancel()
+                try:
+                    await commission_task
+                except asyncio.CancelledError:
+                    pass
+
             if exception:
                 raise exception
             else:
