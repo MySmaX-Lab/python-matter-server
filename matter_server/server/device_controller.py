@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from chip.ChipDeviceCtrl import ChipDeviceController
 from chip.clusters import Attribute, Objects as Clusters
-from chip.clusters.Attribute import ValueDecodeFailure
+from chip.clusters.Attribute import AttributeWriteResult, ValueDecodeFailure
 from chip.clusters.ClusterObjects import ALL_ATTRIBUTES, ALL_CLUSTERS, Cluster
 from chip.discovery import DiscoveryType
 from chip.exceptions import ChipStackError
@@ -103,35 +103,17 @@ MDNS_TYPE_COMMISSIONABLE_NODE = "_matterc._udp.local."
 
 TEST_NODE_START = 900000
 
-ROUTING_ROLE_ATTRIBUTE_PATH = create_attribute_path_from_attribute(
-    0, Clusters.ThreadNetworkDiagnostics.Attributes.RoutingRole
+ROUTING_ROLE_ATTRIBUTE_PATH = create_attribute_path_from_attribute(0, Clusters.ThreadNetworkDiagnostics.Attributes.RoutingRole)
+DESCRIPTOR_PARTS_LIST_ATTRIBUTE_PATH = create_attribute_path_from_attribute(0, Clusters.Descriptor.Attributes.PartsList)
+BASIC_INFORMATION_VENDOR_ID_ATTRIBUTE_PATH = create_attribute_path_from_attribute(0, Clusters.BasicInformation.Attributes.VendorID)
+BASIC_INFORMATION_PRODUCT_ID_ATTRIBUTE_PATH = create_attribute_path_from_attribute(0, Clusters.BasicInformation.Attributes.ProductID)
+BASIC_INFORMATION_SOFTWARE_VERSION_ATTRIBUTE_PATH = create_attribute_path_from_attribute(0, Clusters.BasicInformation.Attributes.SoftwareVersion)
+BASIC_INFORMATION_SOFTWARE_VERSION_STRING_ATTRIBUTE_PATH = create_attribute_path_from_attribute(
+    0, Clusters.BasicInformation.Attributes.SoftwareVersionString
 )
-DESCRIPTOR_PARTS_LIST_ATTRIBUTE_PATH = create_attribute_path_from_attribute(
-    0, Clusters.Descriptor.Attributes.PartsList
-)
-BASIC_INFORMATION_VENDOR_ID_ATTRIBUTE_PATH = create_attribute_path_from_attribute(
-    0, Clusters.BasicInformation.Attributes.VendorID
-)
-BASIC_INFORMATION_PRODUCT_ID_ATTRIBUTE_PATH = create_attribute_path_from_attribute(
-    0, Clusters.BasicInformation.Attributes.ProductID
-)
-BASIC_INFORMATION_SOFTWARE_VERSION_ATTRIBUTE_PATH = (
-    create_attribute_path_from_attribute(
-        0, Clusters.BasicInformation.Attributes.SoftwareVersion
-    )
-)
-BASIC_INFORMATION_SOFTWARE_VERSION_STRING_ATTRIBUTE_PATH = (
-    create_attribute_path_from_attribute(
-        0, Clusters.BasicInformation.Attributes.SoftwareVersionString
-    )
-)
-ICD_ATTR_LIST_ATTRIBUTE_PATH = create_attribute_path_from_attribute(
-    0, Clusters.IcdManagement.Attributes.AttributeList
-)
+ICD_ATTR_LIST_ATTRIBUTE_PATH = create_attribute_path_from_attribute(0, Clusters.IcdManagement.Attributes.AttributeList)
 
-RE_MDNS_SERVICE_NAME = re.compile(
-    rf"^([0-9A-Fa-f]{{16}})-([0-9A-Fa-f]{{16}})\.{re.escape(MDNS_TYPE_OPERATIONAL_NODE)}$"
-)
+RE_MDNS_SERVICE_NAME = re.compile(rf"^([0-9A-Fa-f]{{16}})-([0-9A-Fa-f]{{16}})\.{re.escape(MDNS_TYPE_OPERATIONAL_NODE)}$")
 
 
 # pylint: disable=too-many-lines,too-many-instance-attributes,too-many-public-methods
@@ -150,9 +132,7 @@ class MatterDeviceController:
         self.server = server
         self._ota_provider_dir = ota_provider_dir
 
-        self._chip_device_controller = ChipDeviceControllerWrapper(
-            server, paa_root_cert_dir
-        )
+        self._chip_device_controller = ChipDeviceControllerWrapper(server, paa_root_cert_dir)
 
         # we keep the last events in memory so we can include them in the diagnostics dump
         self.event_history: deque[Attribute.EventReadResult] = deque(maxlen=25)
@@ -180,9 +160,7 @@ class MatterDeviceController:
 
     async def initialize(self) -> None:
         """Initialize the device controller."""
-        self._compressed_fabric_id = (
-            await self._chip_device_controller.get_compressed_fabric_id()
-        )
+        self._compressed_fabric_id = await self._chip_device_controller.get_compressed_fabric_id()
         await load_local_updates(self._ota_provider_dir)
 
     async def start(self) -> None:
@@ -271,20 +249,14 @@ class MatterDeviceController:
         return self.server.loop
 
     @lru_cache(maxsize=1024)  # noqa: B019
-    def get_node_logger(
-        self, logger: logging.Logger, node_id: int
-    ) -> logging.LoggerAdapter:
+    def get_node_logger(self, logger: logging.Logger, node_id: int) -> logging.LoggerAdapter:
         """Return a logger for a specific node."""
         return logging.LoggerAdapter(logger, {"node": node_id})
 
     @api_command(APICommand.GET_NODES)
     def get_nodes(self, only_available: bool = False) -> list[MatterNodeData]:
         """Return all Nodes known to the server."""
-        return [
-            x
-            for x in self._nodes.values()
-            if x is not None and (x.available or not only_available)
-        ]
+        return [x for x in self._nodes.values() if x is not None and (x.available or not only_available)]
 
     @api_command(APICommand.GET_NODE)
     def get_node(self, node_id: int) -> MatterNodeData:
@@ -296,12 +268,17 @@ class MatterDeviceController:
     @api_command(APICommand.SET_DEFAULT_FABRIC_LABEL)
     async def set_default_fabric_label(self, label: str | None) -> None:
         """Set the default fabric label."""
+        if label is not None and len(label) > 32:
+            LOGGER.info(
+                "Fabric label '%s' exceeds 32 characters, truncating to '%s'",
+                label,
+                label[:32],
+            )
+            label = label[:32]
         self._default_fabric_label = label
 
     @api_command(APICommand.COMMISSION_WITH_CODE)
-    async def commission_with_code(
-        self, code: str, network_only: bool = False
-    ) -> MatterNodeData:
+    async def commission_with_code(self, code: str, network_only: bool = False) -> MatterNodeData:
         """
         Commission a device using a QR Code or Manual Pairing Code.
 
@@ -319,14 +296,10 @@ class MatterDeviceController:
             node_id,
         )
         try:
-            commissioned_node_id: int = (
-                await self._chip_device_controller.commission_with_code(
-                    node_id,
-                    code,
-                    DiscoveryType.DISCOVERY_NETWORK_ONLY
-                    if network_only
-                    else DiscoveryType.DISCOVERY_ALL,
-                )
+            commissioned_node_id: int = await self._chip_device_controller.commission_with_code(
+                node_id,
+                code,
+                DiscoveryType.DISCOVERY_NETWORK_ONLY if network_only else DiscoveryType.DISCOVERY_ALL,
             )
             # We use SDK default behavior which always uses the commissioning Node ID in the
             # generated NOC. So this should be the same really.
@@ -334,9 +307,7 @@ class MatterDeviceController:
             if commissioned_node_id != node_id:
                 raise RuntimeError("Returned Node ID must match requested Node ID")
         except ChipStackError as err:
-            raise NodeCommissionFailed(
-                f"Commission with code failed for node {node_id}."
-            ) from err
+            raise NodeCommissionFailed(f"Commission with code failed for node {node_id}.") from err
 
         LOGGER.info("Matter commissioning of Node ID %s successful.", node_id)
 
@@ -354,9 +325,7 @@ class MatterDeviceController:
                     try:
                         await self._chip_device_controller.unpair_device(node_id)
                     except ChipStackError as err_unpair:
-                        LOGGER.warning(
-                            "Removing current fabric from device failed: %s", err_unpair
-                        )
+                        LOGGER.warning("Removing current fabric from device failed: %s", err_unpair)
                     raise err
                 retries -= 1
                 LOGGER.warning("Unable to interview Node %s: %s", node_id, err)
@@ -404,16 +373,14 @@ class MatterDeviceController:
             node_id,
         )
         try:
-            commissioned_node_id: int = (
-                await self._chip_device_controller.commission_anything(
-                    discriminator,
-                    code,
-                    node_id,
-                    ssid,
-                    credentials,
-                    dataset,
-                    isShortDiscriminator,
-                )
+            commissioned_node_id: int = await self._chip_device_controller.commission_anything(
+                discriminator,
+                code,
+                node_id,
+                ssid,
+                credentials,
+                dataset,
+                isShortDiscriminator,
             )
             # We use SDK default behavior which always uses the commissioning Node ID in the
             # generated NOC. So this should be the same really.
@@ -421,9 +388,7 @@ class MatterDeviceController:
             if commissioned_node_id != node_id:
                 raise RuntimeError("Returned Node ID must match requested Node ID")
         except (ChipStackError, NodeCommissionFailed) as err:
-            raise NodeCommissionFailed(
-                f"Commission with code failed for node {node_id}."
-            ) from err
+            raise NodeCommissionFailed(f"Commission with code failed for node {node_id}.") from err
 
         LOGGER.info("Matter commissioning of Node ID %s successful.", node_id)
 
@@ -441,9 +406,7 @@ class MatterDeviceController:
                     try:
                         await self._chip_device_controller.unpair_device(node_id)
                     except ChipStackError as err_unpair:
-                        LOGGER.warning(
-                            "Removing current fabric from device failed: %s", err_unpair
-                        )
+                        LOGGER.warning("Removing current fabric from device failed: %s", err_unpair)
                     raise err
                 retries -= 1
                 LOGGER.warning("Unable to interview Node %s: %s", node_id, err)
@@ -488,28 +451,20 @@ class MatterDeviceController:
                     "Starting Matter commissioning on network using Node ID %s.",
                     node_id,
                 )
-                commissioned_node_id = (
-                    await self._chip_device_controller.commission_on_network(
-                        node_id, setup_pin_code, filter_type, filter
-                    )
-                )
+                commissioned_node_id = await self._chip_device_controller.commission_on_network(node_id, setup_pin_code, filter_type, filter)
             else:
                 LOGGER.info(
                     "Starting Matter commissioning using Node ID %s and IP %s.",
                     node_id,
                     ip_addr,
                 )
-                commissioned_node_id = await self._chip_device_controller.commission_ip(
-                    node_id, setup_pin_code, ip_addr
-                )
+                commissioned_node_id = await self._chip_device_controller.commission_ip(node_id, setup_pin_code, ip_addr)
             # We use SDK default behavior which always uses the commissioning Node ID in the
             # generated NOC. So this should be the same really.
             if commissioned_node_id != node_id:
                 raise RuntimeError("Returned Node ID must match requested Node ID")
         except ChipStackError as err:
-            raise NodeCommissionFailed(
-                f"Commissioning failed for node {node_id}."
-            ) from err
+            raise NodeCommissionFailed(f"Commissioning failed for node {node_id}.") from err
 
         LOGGER.info("Matter commissioning of Node ID %s successful.", node_id)
 
@@ -569,23 +524,16 @@ class MatterDeviceController:
         if (node := self._nodes.get(node_id)) is None or not node.available:
             raise NodeNotReady(f"Node {node_id} is not (yet) available.")
 
-        read_response: Attribute.AsyncReadTransaction.ReadResponse = (
-            await self._chip_device_controller.read_attribute(
-                node_id,
-                [(0, Clusters.AdministratorCommissioning.Attributes.WindowStatus)],
-            )
+        read_response: Attribute.AsyncReadTransaction.ReadResponse = await self._chip_device_controller.read_attribute(
+            node_id,
+            [(0, Clusters.AdministratorCommissioning.Attributes.WindowStatus)],
         )
         window_status = cast(
             Clusters.AdministratorCommissioning.Enums.CommissioningWindowStatusEnum,
-            read_response.attributes[0][Clusters.AdministratorCommissioning][
-                Clusters.AdministratorCommissioning.Attributes.WindowStatus
-            ],
+            read_response.attributes[0][Clusters.AdministratorCommissioning][Clusters.AdministratorCommissioning.Attributes.WindowStatus],
         )
 
-        if (
-            window_status
-            == Clusters.AdministratorCommissioning.Enums.CommissioningWindowStatusEnum.kWindowNotOpen
-        ):
+        if window_status == Clusters.AdministratorCommissioning.Enums.CommissioningWindowStatusEnum.kWindowNotOpen:
             # Commissioning window is no longer open (e.g. device got paired already)
             # Remove our stored commissioning parameters.
             if node_id in self._known_commissioning_params_timers:
@@ -625,9 +573,7 @@ class MatterDeviceController:
             setup_qr_code=sdk_result.setupQRCode,
         )
         # we store the commission parameters and clear them after the timeout
-        self._known_commissioning_params_timers[node_id] = self._loop.call_later(
-            timeout, self._known_commissioning_params.pop, node_id, None
-        )
+        self._known_commissioning_params_timers[node_id] = self._loop.call_later(timeout, self._known_commissioning_params.pop, node_id, None)
         return params
 
     @api_command(APICommand.DISCOVER)
@@ -656,9 +602,8 @@ class MatterDeviceController:
                 pairing_hint=x.pairingHint,
                 mrp_retry_interval_idle=x.mrpRetryIntervalIdle,
                 mrp_retry_interval_active=x.mrpRetryIntervalActive,
-                supports_tcp_client=x.supportsTcpClient,
-                supports_tcp_server=x.supportsTcpServer,
-                is_icd_operating_as_lit=x.isICDOperatingAsLIT,
+                # TCP is provisional, so no devices out there anyway
+                supports_tcp=False,
                 addresses=x.addresses,
                 rotating_id=x.rotatingId,
             )
@@ -668,12 +613,10 @@ class MatterDeviceController:
     async def _interview_node(self, node_id: int) -> None:
         try:
             LOGGER.info("Interviewing node: %s", node_id)
-            read_response: Attribute.AsyncReadTransaction.ReadResponse = (
-                await self._chip_device_controller.read_attribute(
-                    node_id,
-                    [()],
-                    fabric_filtered=False,
-                )
+            read_response: Attribute.AsyncReadTransaction.ReadResponse = await self._chip_device_controller.read_attribute(
+                node_id,
+                [()],
+                fabric_filtered=False,
             )
         except ChipStackError as err:
             raise NodeInterviewFailed(f"Failed to interview node {node_id}") from err
@@ -681,12 +624,10 @@ class MatterDeviceController:
         # Set label if specified and needed
         if self._default_fabric_label:
             cluster = read_response.attributes[0][Clusters.OperationalCredentials]
-            fabrics: list[
-                Clusters.OperationalCredentials.Structs.FabricDescriptorStruct
-            ] = cluster[Clusters.OperationalCredentials.Attributes.Fabrics]
-            fabric_index = cluster[
-                Clusters.OperationalCredentials.Attributes.CurrentFabricIndex
+            fabrics: list[Clusters.OperationalCredentials.Structs.FabricDescriptorStruct] = cluster[
+                Clusters.OperationalCredentials.Attributes.Fabrics
             ]
+            fabric_index = cluster[Clusters.OperationalCredentials.Attributes.CurrentFabricIndex]
 
             local_fabric = next(
                 (fabric for fabric in fabrics if fabric.fabricIndex == fabric_index),
@@ -702,22 +643,16 @@ class MatterDeviceController:
                     await self._chip_device_controller.send_command(
                         node_id,
                         0,
-                        Clusters.OperationalCredentials.Commands.UpdateFabricLabel(
-                            self._default_fabric_label
-                        ),
+                        Clusters.OperationalCredentials.Commands.UpdateFabricLabel(self._default_fabric_label),
                     )
                 except ChipStackError as err:
-                    LOGGER.warning(
-                        "Failed to set fabric label for node %s: %s", node_id, err
-                    )
+                    LOGGER.warning("Failed to set fabric label for node %s: %s", node_id, err)
 
         is_new_node = node_id not in self._nodes
         existing_info = self._nodes.get(node_id)
         node = MatterNodeData(
             node_id=node_id,
-            date_commissioned=(
-                existing_info.date_commissioned if existing_info else datetime.utcnow()
-            ),
+            date_commissioned=(existing_info.date_commissioned if existing_info else datetime.utcnow()),
             last_interview=datetime.utcnow(),
             interview_version=DATA_MODEL_SCHEMA_VERSION,
             available=existing_info.available if existing_info else False,
@@ -760,9 +695,7 @@ class MatterDeviceController:
             await self._chip_device_controller.send_command(
                 node_id,
                 0,
-                Clusters.OperationalCredentials.Commands.UpdateFabricLabel(
-                    self._default_fabric_label
-                ),
+                Clusters.OperationalCredentials.Commands.UpdateFabricLabel(self._default_fabric_label),
             )
 
     @api_command(APICommand.DEVICE_COMMAND)
@@ -785,8 +718,7 @@ class MatterDeviceController:
         command = dataclass_from_dict(command_cls, payload, allow_sdk_types=True)
         if node_id >= TEST_NODE_START:
             LOGGER.debug(
-                "send_device_command called for test node %s on endpoint_id: %s - "
-                "cluster_id: %s - command_name: %s - payload: %s\n%s",
+                "send_device_command called for test node %s on endpoint_id: %s - cluster_id: %s - command_name: %s - payload: %s\n%s",
                 node_id,
                 endpoint_id,
                 cluster_id,
@@ -821,9 +753,7 @@ class MatterDeviceController:
         """
         if (node := self._nodes.get(node_id)) is None or not node.available:
             raise NodeNotReady(f"Node {node_id} is not (yet) available.")
-        attribute_paths = (
-            attribute_path if isinstance(attribute_path, list) else [attribute_path]
-        )
+        attribute_paths = attribute_path if isinstance(attribute_path, list) else [attribute_path]
 
         # handle test node
         if node_id >= TEST_NODE_START:
@@ -833,10 +763,7 @@ class MatterDeviceController:
                 str(attribute_paths),
                 fabric_filtered,
             )
-            return {
-                attr_path: self._nodes[node_id].attributes.get(attr_path)
-                for attr_path in attribute_paths
-            }
+            return {attr_path: self._nodes[node_id].attributes.get(attr_path) for attr_path in attribute_paths}
 
         LOGGER.debug(
             "read_attribute called for node %s on path(s): %s - fabric_filtered: %s",
@@ -912,17 +839,13 @@ class MatterDeviceController:
                 attribute,
             )
             return None
-        return await self._chip_device_controller.write_attribute(
-            node_id, [(endpoint_id, attribute)]
-        )
+        return await self._chip_device_controller.write_attribute(node_id, [(endpoint_id, attribute)])
 
     @api_command(APICommand.REMOVE_NODE)
     async def remove_node(self, node_id: int) -> None:
         """Remove a Matter node/device from the fabric."""
         if node_id not in self._nodes:
-            raise NodeNotExists(
-                f"Node {node_id} does not exist or has not been interviewed."
-            )
+            raise NodeNotExists(f"Node {node_id} does not exist or has not been interviewed.")
 
         LOGGER.info("Removing Node ID %s.", node_id)
 
@@ -951,6 +874,25 @@ class MatterDeviceController:
         except ChipStackError as err:
             LOGGER.warning("Removing current fabric from device failed: %s", err)
 
+    @api_command(APICommand.SET_ACL_ENTRY)
+    async def set_acl_entry(
+        self,
+        node_id: int,
+        entry: list[Clusters.AccessControl.Structs.AccessControlEntryStruct],
+    ) -> list[AttributeWriteResult] | None:
+        """Set acl entry"""
+        return await self._chip_device_controller.write_attribute(node_id, [(0, Clusters.AccessControl.Attributes.Acl(entry))])
+
+    @api_command(APICommand.SET_NODE_BINDING)
+    async def set_node_binding(
+        self,
+        node_id: int,
+        endpoint: int,
+        bindings: list[Clusters.Binding.Structs.TargetStruct],
+    ) -> list[AttributeWriteResult] | None:
+        """Set node binding"""
+        return await self._chip_device_controller.write_attribute(node_id, [(endpoint, Clusters.Binding.Attributes.Binding(bindings))])
+
     @api_command(APICommand.PING_NODE)
     async def ping_node(self, node_id: int, attempts: int = 1) -> NodePingResult:
         """Ping node on the currently known IP-address(es)."""
@@ -959,29 +901,20 @@ class MatterDeviceController:
             return {"0.0.0.0": True, "0000:1111:2222:3333:4444": True}
         node = self._nodes.get(node_id)
         if node is None:
-            raise NodeNotExists(
-                f"Node {node_id} does not exist or is not yet interviewed"
-            )
+            raise NodeNotExists(f"Node {node_id} does not exist or is not yet interviewed")
         node_logger = self.get_node_logger(LOGGER, node_id)
 
         battery_powered = (
-            node.attributes.get(ROUTING_ROLE_ATTRIBUTE_PATH, 0)
-            == Clusters.ThreadNetworkDiagnostics.Enums.RoutingRoleEnum.kSleepyEndDevice
+            node.attributes.get(ROUTING_ROLE_ATTRIBUTE_PATH, 0) == Clusters.ThreadNetworkDiagnostics.Enums.RoutingRoleEnum.kSleepyEndDevice
         )
 
         async def _do_ping(ip_address: str) -> None:
             """Ping IP and add to result."""
-            timeout = (
-                NODE_PING_TIMEOUT_BATTERY_POWERED
-                if battery_powered
-                else NODE_PING_TIMEOUT
-            )
+            timeout = NODE_PING_TIMEOUT_BATTERY_POWERED if battery_powered else NODE_PING_TIMEOUT
             if "%" in ip_address:
                 # ip address contains an interface index
                 clean_ip, interface_idx = ip_address.split("%", 1)
-                node_logger.debug(
-                    "Pinging address %s (using interface %s)", clean_ip, interface_idx
-                )
+                node_logger.debug("Pinging address %s (using interface %s)", clean_ip, interface_idx)
             else:
                 node_logger.debug("Pinging address %s", ip_address)
             result[ip_address] = await ping_ip(ip_address, timeout, attempts=attempts)
@@ -993,31 +926,23 @@ class MatterDeviceController:
 
         # retrieve the currently connected/used address which is used
         # by the sdk for communicating with the device
-        if sdk_result := await self._chip_device_controller.get_address_and_port(
-            node_id
-        ):
+        if sdk_result := await self._chip_device_controller.get_address_and_port(node_id):
             active_address = sdk_result[0]
-            node_logger.info(
-                "The SDK is communicating with the device using %s", active_address
-            )
+            node_logger.info("The SDK is communicating with the device using %s", active_address)
             if active_address not in result and node.available:
                 # if the sdk is connected to a node, treat the address as pingable
                 result[active_address] = True
 
         return result
 
-    async def _get_node_ip_addresses(
-        self, node_id: int, prefer_cache: bool = False
-    ) -> list[str]:
+    async def _get_node_ip_addresses(self, node_id: int, prefer_cache: bool = False) -> list[str]:
         """Get the IP addresses of a node."""
         cached_info = self._last_known_ip_addresses.get(node_id, [])
         if prefer_cache and cached_info:
             return cached_info
         node = self._nodes.get(node_id)
         if node is None:
-            raise NodeNotExists(
-                f"Node {node_id} does not exist or is not yet interviewed"
-            )
+            raise NodeNotExists(f"Node {node_id} does not exist or is not yet interviewed")
         node_logger = self.get_node_logger(LOGGER, node_id)
         # query mdns for all IP's
         # ensure both fabric id and node id have 16 characters (prefix with zero's)
@@ -1026,9 +951,7 @@ class MatterDeviceController:
         if TYPE_CHECKING:
             assert self._aiozc is not None
         if not await info.async_request(self._aiozc.zeroconf, 3000):
-            node_logger.info(
-                "Node could not be discovered on the network, returning cached IP's"
-            )
+            node_logger.info("Node could not be discovered on the network, returning cached IP's")
             return cached_info
         ip_addresses = info.parsed_scoped_addresses(IPVersion.All)
         # cache this info for later use
@@ -1129,9 +1052,7 @@ class MatterDeviceController:
 
         _, update = await self._check_node_update(node_id, software_version)
         if update is None:
-            raise UpdateCheckError(
-                f"Software version {software_version} is not available for node {node_id}."
-            )
+            raise UpdateCheckError(f"Software version {software_version} is not available for node {node_id}.")
 
         # Add update to the OTA provider
         ota_provider = ExternalOtaProvider(
@@ -1145,15 +1066,11 @@ class MatterDeviceController:
         node_logger.info("Downloading update from '%s'", update["otaUrl"])
         await ota_provider.fetch_update(update)
 
-        self._attribute_update_callbacks.setdefault(node_id, []).append(
-            ota_provider.check_update_state
-        )
+        self._attribute_update_callbacks.setdefault(node_id, []).append(ota_provider.check_update_state)
 
         try:
             if node_id in self._nodes_in_ota:
-                raise UpdateError(
-                    f"Node {node_id} is already in the process of updating."
-                )
+                raise UpdateError(f"Node {node_id} is already in the process of updating.")
 
             self._nodes_in_ota.add(node_id)
 
@@ -1164,9 +1081,7 @@ class MatterDeviceController:
                 node_id,
             )
         finally:
-            self._attribute_update_callbacks[node_id].remove(
-                ota_provider.check_update_state
-            )
+            self._attribute_update_callbacks[node_id].remove(ota_provider.check_update_state)
             self._nodes_in_ota.remove(node_id)
 
     async def _check_node_update(
@@ -1179,19 +1094,11 @@ class MatterDeviceController:
 
         node_logger.debug("Check for updates.")
         vid = cast(int, node.attributes.get(BASIC_INFORMATION_VENDOR_ID_ATTRIBUTE_PATH))
-        pid = cast(
-            int, node.attributes.get(BASIC_INFORMATION_PRODUCT_ID_ATTRIBUTE_PATH)
-        )
-        software_version = cast(
-            int, node.attributes.get(BASIC_INFORMATION_SOFTWARE_VERSION_ATTRIBUTE_PATH)
-        )
-        software_version_string = node.attributes.get(
-            BASIC_INFORMATION_SOFTWARE_VERSION_STRING_ATTRIBUTE_PATH
-        )
+        pid = cast(int, node.attributes.get(BASIC_INFORMATION_PRODUCT_ID_ATTRIBUTE_PATH))
+        software_version = cast(int, node.attributes.get(BASIC_INFORMATION_SOFTWARE_VERSION_ATTRIBUTE_PATH))
+        software_version_string = node.attributes.get(BASIC_INFORMATION_SOFTWARE_VERSION_STRING_ATTRIBUTE_PATH)
 
-        update_source, update = await check_for_update(
-            node_logger, vid, pid, software_version, requested_software_version
-        )
+        update_source, update = await check_for_update(node_logger, vid, pid, software_version, requested_software_version)
         if not update_source or not update:
             node_logger.info("No new update found.")
             return None, None
@@ -1218,9 +1125,7 @@ class MatterDeviceController:
         """
         # pylint: disable=too-many-locals,too-many-statements
         if self._nodes.get(node_id) is None:
-            raise NodeNotExists(
-                f"Node {node_id} does not exist or has not been interviewed."
-            )
+            raise NodeNotExists(f"Node {node_id} does not exist or has not been interviewed.")
 
         node_logger = self.get_node_logger(LOGGER, node_id)
 
@@ -1248,16 +1153,11 @@ class MatterDeviceController:
                 if endpoints_removed:
                     self._handle_endpoints_removed(node_id, endpoints_removed)
                 if endpoints_added:
-                    self._loop.create_task(
-                        self._handle_endpoints_added(node_id, endpoints_added)
-                    )
+                    self._loop.create_task(self._handle_endpoints_added(node_id, endpoints_added))
                 return
 
             # work out if software version changed
-            if (
-                str(path) == BASIC_INFORMATION_SOFTWARE_VERSION_ATTRIBUTE_PATH
-                and new_value != old_value
-            ):
+            if str(path) == BASIC_INFORMATION_SOFTWARE_VERSION_ATTRIBUTE_PATH and new_value != old_value:
                 # schedule a full interview of the node if the software version changed
                 self._loop.create_task(self._interview_node(node_id))
 
@@ -1295,9 +1195,7 @@ class MatterDeviceController:
             if old_value == new_value:
                 return
 
-            self._loop.call_soon_threadsafe(
-                attribute_updated_callback, path, old_value, new_value
-            )
+            self._loop.call_soon_threadsafe(attribute_updated_callback, path, old_value, new_value)
 
         def event_callback(
             data: Attribute.EventReadResult,
@@ -1336,9 +1234,7 @@ class MatterDeviceController:
         ) -> None:
             self._loop.call_soon_threadsafe(event_callback, data, transaction)
 
-        def error_callback(
-            chipError: int, transaction: Attribute.SubscriptionTransaction
-        ) -> None:
+        def error_callback(chipError: int, transaction: Attribute.SubscriptionTransaction) -> None:
             # pylint: disable=unused-argument, invalid-name
             node_logger.error("Got error from node: %s", chipError)
 
@@ -1366,10 +1262,7 @@ class MatterDeviceController:
             # minutes (typical TTL of mDNS). We assume this device got powered off.
             # When the device gets powered on again, it typically announces itself via
             # mDNS again. The mDNS browsing code will setup the subscription again.
-            if (
-                time.time() - self._first_resubscribe_attempt[node_id]
-                > NODE_RESUBSCRIBE_TIMEOUT_OFFLINE
-            ):
+            if time.time() - self._first_resubscribe_attempt[node_id] > NODE_RESUBSCRIBE_TIMEOUT_OFFLINE:
                 asyncio.create_task(self._node_offline(node_id))
 
         def resubscription_succeeded(
@@ -1393,10 +1286,7 @@ class MatterDeviceController:
         routing_role = node.attributes.get(ROUTING_ROLE_ATTRIBUTE_PATH)
         if routing_role is None:
             interval_ceiling = NODE_SUBSCRIPTION_CEILING_WIFI
-        elif (
-            routing_role
-            == Clusters.ThreadNetworkDiagnostics.Enums.RoutingRoleEnum.kSleepyEndDevice
-        ):
+        elif routing_role == Clusters.ThreadNetworkDiagnostics.Enums.RoutingRoleEnum.kSleepyEndDevice:
             interval_ceiling = NODE_SUBSCRIPTION_CEILING_BATTERY_POWERED
         else:
             interval_ceiling = NODE_SUBSCRIPTION_CEILING_THREAD
@@ -1409,15 +1299,13 @@ class MatterDeviceController:
             interval_floor = NODE_SUBSCRIPTION_FLOOR_DEFAULT
         self._resubscription_attempt[node_id] = 0
         # set-up the actual subscription
-        sub: Attribute.SubscriptionTransaction = (
-            await self._chip_device_controller.read_attribute(
-                node_id,
-                [()],
-                events=[("*", 1)],
-                return_cluster_objects=False,
-                report_interval=(interval_floor, interval_ceiling),
-                auto_resubscribe=True,
-            )
+        sub: Attribute.SubscriptionTransaction = await self._chip_device_controller.read_attribute(
+            node_id,
+            [()],
+            events=[("*", 1)],
+            return_cluster_objects=False,
+            report_interval=(interval_floor, interval_ceiling),
+            auto_resubscribe=True,
         )
 
         # Make sure to clear default handler which prints to stdout
@@ -1433,9 +1321,7 @@ class MatterDeviceController:
         tlv_attributes = sub.GetTLVAttributes()
         node.attributes.update(parse_attributes_from_read_result(tlv_attributes))
 
-        report_interval_floor, report_interval_ceiling = (
-            sub.GetReportingIntervalsSeconds()
-        )
+        report_interval_floor, report_interval_ceiling = sub.GetReportingIntervalsSeconds()
         node_logger.info(
             "Subscription succeeded with report interval [%d, %d]",
             report_interval_floor,
@@ -1457,9 +1343,7 @@ class MatterDeviceController:
     ) -> None:
         """Handle set-up of subscriptions and interview (if needed) for known/discovered node."""
         node_data = self._nodes[node_id]
-        is_thread_node = (
-            node_data.attributes.get(ROUTING_ROLE_ATTRIBUTE_PATH) is not None
-        )
+        is_thread_node = node_data.attributes.get(ROUTING_ROLE_ATTRIBUTE_PATH) is not None
 
         # use semaphore for thread based devices to (somewhat)
         # throttle the traffic that setup/initial subscription generates
@@ -1471,9 +1355,7 @@ class MatterDeviceController:
 
             # try to resolve the node using the sdk first before do anything else
             try:
-                await self._chip_device_controller.find_or_establish_case_session(
-                    node_id=node_id
-                )
+                await self._chip_device_controller.find_or_establish_case_session(node_id=node_id)
             except NodeNotResolving as err:
                 node_logger.warning(
                     "Setup for node failed: %s",
@@ -1497,9 +1379,7 @@ class MatterDeviceController:
                         "Setup for node failed: %s",
                         str(err) or err.__class__.__name__,
                         # log full stack trace if verbose logging is enabled
-                        exc_info=err
-                        if LOGGER.isEnabledFor(VERBOSE_LOG_LEVEL)
-                        else None,
+                        exc_info=err if LOGGER.isEnabledFor(VERBOSE_LOG_LEVEL) else None,
                     )
                     raise err
 
@@ -1534,10 +1414,7 @@ class MatterDeviceController:
                 await self._setup_node_try_once(node_logger, node_id)
                 break
             except (NodeNotResolving, NodeInterviewFailed, ChipStackError):
-                if (
-                    time.time() - self._node_last_seen_on_mdns.get(node_id, 0)
-                    > NODE_MDNS_SUBSCRIPTION_RETRY_TIMEOUT
-                ):
+                if time.time() - self._node_last_seen_on_mdns.get(node_id, 0) > NODE_MDNS_SUBSCRIPTION_RETRY_TIMEOUT:
                     # NOTE: assume the node will be picked up by mdns discovery later
                     # automatically when it becomes available again.
                     node_logger.warning(
@@ -1564,11 +1441,7 @@ class MatterDeviceController:
         """Handle callback for when bridge endpoint(s) get deleted."""
         node = self._nodes[node_id]
         for endpoint_id in endpoints:
-            node.attributes = {
-                key: value
-                for key, value in node.attributes.items()
-                if not key.startswith(f"{endpoint_id}/")
-            }
+            node.attributes = {key: value for key, value in node.attributes.items() if not key.startswith(f"{endpoint_id}/")}
             self.server.signal_event(
                 EventType.ENDPOINT_REMOVED,
                 {"node_id": node_id, "endpoint_id": endpoint_id},
@@ -1576,9 +1449,7 @@ class MatterDeviceController:
         # schedule save to persistent storage
         self._write_node_state(node_id)
 
-    async def _handle_endpoints_added(
-        self, node_id: int, endpoints: Iterable[int]
-    ) -> None:
+    async def _handle_endpoints_added(self, node_id: int, endpoints: Iterable[int]) -> None:
         """Handle callback for when bridge endpoint(s) get added."""
         # we simply do a full interview of the node
         await self._interview_node(node_id)
@@ -1613,18 +1484,14 @@ class MatterDeviceController:
 
         if service_type == MDNS_TYPE_COMMISSIONABLE_NODE:
             # process the event with a debounce timer
-            self._mdns_event_timer[name] = self._loop.call_later(
-                0.5, self._on_mdns_commissionable_node_state, name, state_change
-            )
+            self._mdns_event_timer[name] = self._loop.call_later(0.5, self._on_mdns_commissionable_node_state, name, state_change)
             return
 
         if service_type != MDNS_TYPE_OPERATIONAL_NODE:
             return
 
         if not (match := RE_MDNS_SERVICE_NAME.match(name)):
-            LOGGER.getChild("mdns").warning(
-                "Service name doesn't match expected operational node pattern: %s", name
-            )
+            LOGGER.getChild("mdns").warning("Service name doesn't match expected operational node pattern: %s", name)
             return
 
         fabric_id_hex, node_id_hex = match.groups()
@@ -1642,9 +1509,7 @@ class MatterDeviceController:
             state_change,
         )
 
-    def _on_mdns_operational_node_state(
-        self, name: str, node_id: int, state_change: ServiceStateChange
-    ) -> None:
+    def _on_mdns_operational_node_state(self, name: str, node_id: int, state_change: ServiceStateChange) -> None:
         """Handle a (operational) Matter node MDNS state change."""
         self._mdns_event_timer.pop(name, None)
         node_logger = self.get_node_logger(LOGGER.getChild("mdns"), node_id)
@@ -1672,15 +1537,9 @@ class MatterDeviceController:
             # But this does speedup the resubscription process in case the subscription
             # is already in resubscribe mode.
             node_logger.debug("Activity on mDNS, trigger resubscribe if scheduled")
-            asyncio.create_task(
-                self._chip_device_controller.trigger_resubscribe_if_scheduled(
-                    node_id, "mDNS state change detected"
-                )
-            )
+            asyncio.create_task(self._chip_device_controller.trigger_resubscribe_if_scheduled(node_id, "mDNS state change detected"))
 
-    def _on_mdns_commissionable_node_state(
-        self, name: str, state_change: ServiceStateChange
-    ) -> None:
+    def _on_mdns_commissionable_node_state(self, name: str, state_change: ServiceStateChange) -> None:
         """Handle a (commissionable) Matter node MDNS state change."""
         self._mdns_event_timer.pop(name, None)
         logger = LOGGER.getChild("mdns")
@@ -1716,9 +1575,7 @@ class MatterDeviceController:
             force=force,
         )
 
-    def _node_unavailable(
-        self, node_id: int, force_resubscription: bool = False
-    ) -> None:
+    def _node_unavailable(self, node_id: int, force_resubscription: bool = False) -> None:
         """Mark node as unavailable."""
         # mark node as unavailable (if it wasn't already)
         node = self._nodes[node_id]
@@ -1732,24 +1589,14 @@ class MatterDeviceController:
             # Make sure the subscriptions are expiring very soon to trigger subscription
             # resumption logic quickly. This is especially important for battery operated
             # devices so subscription resumption logic kicks in quickly.
-            node_logger.info(
-                "Forcing subscription timeout in %ds", NODE_RESUBSCRIBE_FORCE_TIMEOUT
-            )
-            asyncio.create_task(
-                self._chip_device_controller.subscription_override_liveness_timeout(
-                    node_id, NODE_RESUBSCRIBE_FORCE_TIMEOUT * 1000
-                )
-            )
+            node_logger.info("Forcing subscription timeout in %ds", NODE_RESUBSCRIBE_FORCE_TIMEOUT)
+            asyncio.create_task(self._chip_device_controller.subscription_override_liveness_timeout(node_id, NODE_RESUBSCRIBE_FORCE_TIMEOUT * 1000))
             # Clear the timeout soon after the scheduled timeout above. This causes the
             # SDK to use the default liveness timeout again, which is what we want for
             # the once resumed subscription.
             self._loop.call_later(
                 NODE_RESUBSCRIBE_FORCE_TIMEOUT + 1,
-                lambda: asyncio.create_task(
-                    self._chip_device_controller.subscription_override_liveness_timeout(
-                        node_id, 0
-                    )
-                ),
+                lambda: asyncio.create_task(self._chip_device_controller.subscription_override_liveness_timeout(node_id, 0)),
             )
 
     async def _node_offline(self, node_id: int) -> None:
@@ -1776,9 +1623,7 @@ class MatterDeviceController:
             attribute_paths = list(self._polled_attributes[node_id])
             try:
                 # try to read the attribute(s) - this will fire an event if the value changed
-                await self.read_attribute(
-                    node_id, attribute_paths, fabric_filtered=False
-                )
+                await self.read_attribute(node_id, attribute_paths, fabric_filtered=False)
             except (ChipStackError, NodeNotReady) as err:
                 LOGGER.warning(
                     "Polling custom attribute(s) %s for node %s failed: %s",
@@ -1802,14 +1647,10 @@ class MatterDeviceController:
             self._custom_attribute_poller_timer = None
             if (existing := self._custom_attribute_poller_task) and not existing.done():
                 existing.cancel()
-            self._custom_attribute_poller_task = asyncio.create_task(
-                self._custom_attributes_poller()
-            )
+            self._custom_attribute_poller_task = asyncio.create_task(self._custom_attributes_poller())
 
         # no need to schedule the poll if we have no (more) custom attributes to poll
         if not self._polled_attributes:
             return
 
-        self._custom_attribute_poller_timer = self._loop.call_later(
-            CUSTOM_ATTRIBUTES_POLLER_INTERVAL, run_custom_attributes_poller
-        )
+        self._custom_attribute_poller_timer = self._loop.call_later(CUSTOM_ATTRIBUTES_POLLER_INTERVAL, run_custom_attributes_poller)
