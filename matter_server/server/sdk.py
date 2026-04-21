@@ -19,8 +19,8 @@ from chip.discovery import FilterType
 from chip.exceptions import ChipStackError
 
 from ..common.errors import (
-    NodeNotResolving,
     NodeCommissionFailed,
+    NodeNotResolving,
 )
 
 if TYPE_CHECKING:
@@ -176,8 +176,7 @@ class ChipDeviceControllerWrapper:
         except asyncio.TimeoutError as err:
             if exception:
                 raise exception
-            else:
-                raise NodeCommissionFailed(f"Commissioning timed out after {timeout} seconds without specific exceptions") from err
+            raise NodeCommissionFailed(f"Commissioning timed out after {timeout} seconds without specific exceptions") from err
 
     async def commission_on_network(
         self,
