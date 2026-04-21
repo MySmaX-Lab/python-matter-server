@@ -52,6 +52,8 @@ class APICommand(str, Enum):
     CHECK_NODE_UPDATE = "check_node_update"
     UPDATE_NODE = "update_node"
     SET_DEFAULT_FABRIC_LABEL = "set_default_fabric_label"
+    SET_ACL_ENTRY = "set_acl_entry"
+    SET_NODE_BINDING = "set_node_binding"
 
 
 EventCallBackType = Callable[[EventType, Any], None]
@@ -202,9 +204,7 @@ class CommissionableNodeData:
     pairing_hint: int | None = None
     mrp_retry_interval_idle: int | None = None
     mrp_retry_interval_active: int | None = None
-    supports_tcp_client: bool | None = None
-    supports_tcp_server: bool | None = None
-    is_icd_operating_as_lit: bool | None = None
+    supports_tcp: bool | None = None
     addresses: list[str] | None = None
     rotating_id: str | None = None
 
